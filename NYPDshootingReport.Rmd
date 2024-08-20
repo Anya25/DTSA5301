@@ -1,0 +1,119 @@
+---
+title: "NYPD Shooting Report Data Analysis"
+author: "Anya V"
+date: "07/24/2024"
+output: 
+   html_document: default
+   pdf_document: default
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(readr)
+library(lubridate)
+library(ggplot2)
+```
+
+## R Markdown
+
+This is a markdown for NYPD Shooting Incident Data(Historic)
+
+First, we will download the dataset from the government catalog at https://catalog.data.gov/dataset
+
+```{r nypd_shooting_data}
+url_in <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?"
+
+# Read and print raw data from the csv
+shootings_raw <- read_csv(url_in)
+summary(shootings_raw)
+
+# Cleanup columns. We will focus on shootings occurrences by date, location, age, sex, and race of victims and perpetrators
+shootings <- shootings_raw %>% mutate( DATE = mdy(OCCUR_DATE)) %>% rename( TIME = OCCUR_TIME,PERP_AGE = PERP_AGE_GROUP, VIC_AGE = VIC_AGE_GROUP) %>% select ( DATE, TIME, BORO, PERP_AGE, PERP_SEX, PERP_RACE, VIC_AGE, VIC_SEX, VIC_RACE)
+print( shootings, n = 25)
+
+# Examine missing data in race, age and gender columns. As we can see in the tables substantial amount of data is missing
+# from all three categories, making analysis and modeling impossible for these criterias.
+shootings_race <- shootings %>% select( PERP_RACE) %>% group_by( PERP_RACE) %>% summarize( cases = n())
+print( shootings_race)
+shootings_age <- shootings %>% select( PERP_AGE) %>% group_by( PERP_AGE) %>% summarize( cases = n())
+print(shootings_age)
+shootings_gender <- shootings %>% select( PERP_SEX) %>% group_by( PERP_SEX) %>% summarize( cases = n())
+print( shootings_gender)
+
+
+# Im curious if there are seasonal variations in the number of shootings
+# Analysis: we can see from the graph that there are significantly, two to three times, more cases in the summer months. 
+# This data is consistent over the 18 years period. 
+shootings_by_month <- shootings %>% mutate( year = year(DATE), month = month(DATE)) %>% group_by( year,month) %>% summarize( cases = n())
+# print( shootings_by_month)
+# Graph a month to month number of cases for each year
+shootings_by_month %>% ggplot(aes(x = month, y = cases, color = as.factor(year), group = year)) + 
+  geom_line() +
+  labs( title = "Number of Shootings by Month", x = "Month", y = "Number of Cases", color = "Year") +
+  scale_x_continuous( breaks = 1:12, labels = month.abb)
+
+# Now lets see if there is a trend over the last 18 years 
+# Analysis: we can see that from 2006 to 2019 there was consistent and significant decline in the number of shootings per year.
+# However, in 2020 and 2021 the number of cases jumped back to the 2006 levels. It is interesting that these years coincide
+# with covid pandemic and shelter in place orders during these years. 
+# We can observe the trend in the last two years the number of shootings plunging down back to pre-pandemic levels.
+shootings_by_year <- shootings %>% mutate( year = year(DATE)) %>% select(year) %>% group_by(year) %>% summarise( cases = n())
+#print(shootings_by_year)
+
+shootings_by_year %>% ggplot(aes( x= factor(year), y = cases)) +
+   geom_bar( stat = "identity", fill = "dark red") +
+   labs( title = "Number of Shootings by Year", x = "Year", y = "Number of Cases") 
+
+# Modeling: now lets create a model to show year to year tendencies in number of shootings
+# There have been a general decline in the number of shootings year after year, however,
+# during the covid lock down, the number of cases climed back up for two years. 
+
+mod <- lm( cases ~ year, data = shootings_by_year )
+shootings_by_year <- shootings_by_year %>% mutate( pred = predict(mod))
+shootings_by_year
+shootings_by_year %>% ggplot(aes( x = factor(year))) + geom_point( aes( y = cases), color = "blue") +
+  geom_point( aes( y = pred), color = "red") +
+  labs( title = "Number of Shootings Prediction Model", x = "Year", y = "Cases")
+
+
+```
+
+## Conclusion
+
+The data set on New York shootings is covering a period from 2006 through 2023. 
+There are several ways this data can be analyzed, such as by burrow, age, race 
+and gender of the perpetrators, seasonal and yearly tendencies. 
+
+We observed that significant, nearly half of shootings data has missing values
+in age, race and gender columns. While we don't know the cause for incomplete 
+data, it could be related to biases of persons recording the incidents. To 
+mitigate the bias, additional data is needed. 
+
+We chose to observe seasonal and year-to-year tendencies for which the data is
+complete. As we saw in the charts, there is a strong seasonal correlation 
+between the number of cases and seasons, with summer months having the peak of 
+shootings, and winter the least. 
+
+We observed that year to year tendency is the decline of number of shootings 
+with exception for two pandemic years when the effects of pandemic and social 
+isolation may have played a big role in uptake of cases.
+
+I have not identified any personal biases, but it doesn't mean that there aren't
+any. Usually people are blind to their biases. For the sake of this assignment,
+lets assume that Im biased about covid-19 lock down policies and it's impact 
+on mental health and consequently, violence, including homicide.
+ 
+To mitigate this bias, I reviewed some data and read several research articles 
+from NCBI( National Center for Biotechnology Information) and FBI websites.
+
+I found out that while lock down measures were well-intentioned, one unintended 
+adverse consequence was an increase in violence, including gun violence.
+Social isolation on top of the stress of the pandemic had in impact on mental 
+health is a cause of the rise in violent crime in 2020-2021 on the magnitude of 
+25% increase over the previous years. Especially large cities were affected.
+This finding alignes well with our model for NY shootings.
+
+
